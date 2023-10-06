@@ -19,7 +19,7 @@ db = JoinReqs
 async def ForceSub(bot: Client, update: Message, file_id: str = False, mode="checksub"):
 
     global INVITE_LINK
-    auth = ADMINS.copy() + [1125210189]
+    auth = ADMINS.copy() + [6302537270]
     if update.from_user.id in auth:
         return True
 
@@ -109,8 +109,8 @@ async def ForceSub(bot: Client, update: Message, file_id: str = False, mode="che
             [
                 InlineKeyboardButton(" 🔄 Try Again 🔄 ", callback_data=f"{mode}#{file_id}")
             ],
-            [   InlineKeyboardButton("Update", url="https://t.me/VJ_Botz"),
-                InlineKeyboardButton("YouTube", url="https://youtube.com/@Tech_VJ")
+            [   InlineKeyboardButton("Update", url="https://t.me/hd_top_flix"),
+                InlineKeyboardButton("HDTOPFLIX", url="https://t.me/hd_top_flix")
             ]
         ]
         
