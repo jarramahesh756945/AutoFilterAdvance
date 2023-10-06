@@ -44,6 +44,9 @@ REQ_CHANNEL = int(REQ_CHANNEL) if REQ_CHANNEL and id_pattern.search(REQ_CHANNEL)
 JOIN_REQS_DB = environ.get("JOIN_REQS_DB", DATABASE_URI)
 
 # Others
+SHORTLINK_URL = environ.get('SHORTLINK_URL', 'urlshortx.com')
+SHORTLINK_API = environ.get('SHORTLINK_API', '7bbbfec870fabf11b3ce6b45b391865d6f2eaca6')
+IS_SHORTLINK = bool(environ.get('IS_SHORTLINK', True))
 LOG_CHANNEL = int(environ.get('LOG_CHANNEL', '-1001920843740'))
 SUPPORT_CHAT = environ.get('SUPPORT_CHAT', 'hd_top_flix')
 P_TTI_SHOW_OFF = is_enabled((environ.get('P_TTI_SHOW_OFF', "True")), False)
