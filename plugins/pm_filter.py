@@ -670,12 +670,12 @@ async def auto_filter(client, msg, spoll=False):
 
     btn.insert(0,
         [
-            InlineKeyboardButton("Update Channel", url="https://t.me/VJ_Botz"),
+            InlineKeyboardButton("Update Channel", url="https://t.me/hd_top_flix"),
         ]
     )
     btn.insert(1,
         [
-            InlineKeyboardButton("YouTube Channel", url="https://youtube.com/@Tech_VJ"),
+            InlineKeyboardButton("YouTube Channel", url="https://t.me/hd_top_flix"),
         ]
     )
 
