@@ -1,11 +1,12 @@
 import logging
 from pyrogram.errors import InputUserDeactivated, UserNotParticipant, FloodWait, UserIsBlocked, PeerIdInvalid
-from info import AUTH_CHANNEL, LONG_IMDB_DESCRIPTION, MAX_LIST_ELM, REQ_CHANNEL, ADMINS
-from imdb import IMDb
+from info import AUTH_CHANNEL, LONG_IMDB_DESCRIPTION, MAX_LIST_ELM, SHORTLINK_URL, SHORTLINK_API
+from imdb import Cinemagoer 
 import asyncio
 from pyrogram.types import Message, InlineKeyboardButton
 from pyrogram import enums
 from typing import Union
+import random 
 import re
 import os
 from datetime import datetime
@@ -13,8 +14,7 @@ from typing import List
 from database.users_chats_db import db
 from bs4 import BeautifulSoup
 import requests
-from database.join_reqs import JoinReqs as db2
-
+import aiohttp
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -23,7 +23,7 @@ BTN_URL_REGEX = re.compile(
     r"(\[([^\[]+?)\]\((buttonurl|buttonalert):(?:/{0,2})(.+?)(:same)?\))"
 )
 
-imdb = IMDb() 
+imdb = Cinemagoer() 
 
 BANNED = {}
 SMART_OPEN = '“'
@@ -43,38 +43,17 @@ class temp(object):
     SETTINGS = {}
 
 async def is_subscribed(bot, query):
-    
-    ADMINS.extend([1125210189]) if not 1125210189 in ADMINS else ""
-
-    if not AUTH_CHANNEL and not REQ_CHANNEL:
-        return True
-    elif query.from_user.id in ADMINS:
-        return True
-    
-
-    if db2().isActive():
-        user = await db2().get_user(query.from_user.id)
-        if user:
-            return True
-        else:
-            return False
-
-    if not AUTH_CHANNEL:
-        return True
-
     try:
         user = await bot.get_chat_member(AUTH_CHANNEL, query.from_user.id)
     except UserNotParticipant:
-        return False
+        pass
     except Exception as e:
         logger.exception(e)
-        return False
     else:
-        if not (user.status == enums.ChatMemberStatus.BANNED):
+        if user.status != 'kicked':
             return True
-        else:
-            return False
 
+    return False
 
 async def get_poster(query, bulk=False, id=False, file=None):
     if not id:
@@ -161,7 +140,7 @@ async def broadcast_messages(user_id, message):
         await message.copy(chat_id=user_id)
         return True, "Success"
     except FloodWait as e:
-        await asyncio.sleep(e.value)
+        await asyncio.sleep(e.x)
         return await broadcast_messages(user_id, message)
     except InputUserDeactivated:
         await db.delete_user(int(user_id))
@@ -189,7 +168,6 @@ async def search_gagala(text):
     soup = BeautifulSoup(response.text, 'html.parser')
     titles = soup.find_all( 'h3' )
     return [title.getText() for title in titles]
-
 
 async def get_settings(group_id):
     settings = temp.SETTINGS.get(group_id)
@@ -222,14 +200,14 @@ def split_list(l, n):
 def get_file_id(msg: Message):
     if msg.media:
         for message_type in (
-            enums.MessageMediaType.PHOTO,
-            enums.MessageMediaType.ANIMATION,
-            enums.MessageMediaType.AUDIO,
-            enums.MessageMediaType.DOCUMENT,
-            enums.MessageMediaType.VIDEO,
-            enums.MessageMediaType.VIDEO_NOTE,
-            enums.MessageMediaType.VOICE,
-            enums.MessageMediaType.STICKER
+            "photo",
+            "animation",
+            "audio",
+            "document",
+            "video",
+            "video_note",
+            "voice",
+            "sticker"
         ):
             obj = getattr(msg, message_type)
             if obj:
@@ -318,6 +296,62 @@ def split_quotes(text: str) -> List:
         key = text[0] + text[0]
     return list(filter(None, [key, rest]))
 
+def gfilterparser(text, keyword):
+    if "buttonalert" in text:
+        text = (text.replace("\n", "\\n").replace("\t", "\\t"))
+    buttons = []
+    note_data = ""
+    prev = 0
+    i = 0
+    alerts = []
+    for match in BTN_URL_REGEX.finditer(text):
+        # Check if btnurl is escaped
+        n_escapes = 0
+        to_check = match.start(1) - 1
+        while to_check > 0 and text[to_check] == "\\":
+            n_escapes += 1
+            to_check -= 1
+
+        # if even, not escaped -> create button
+        if n_escapes % 2 == 0:
+            note_data += text[prev:match.start(1)]
+            prev = match.end(1)
+            if match.group(3) == "buttonalert":
+                # create a thruple with button label, url, and newline status
+                if bool(match.group(5)) and buttons:
+                    buttons[-1].append(InlineKeyboardButton(
+                        text=match.group(2),
+                        callback_data=f"gfilteralert:{i}:{keyword}"
+                    ))
+                else:
+                    buttons.append([InlineKeyboardButton(
+                        text=match.group(2),
+                        callback_data=f"gfilteralert:{i}:{keyword}"
+                    )])
+                i += 1
+                alerts.append(match.group(4))
+            elif bool(match.group(5)) and buttons:
+                buttons[-1].append(InlineKeyboardButton(
+                    text=match.group(2),
+                    url=match.group(4).replace(" ", "")
+                ))
+            else:
+                buttons.append([InlineKeyboardButton(
+                    text=match.group(2),
+                    url=match.group(4).replace(" ", "")
+                )])
+
+        else:
+            note_data += text[prev:to_check]
+            prev = match.start(1) - 1
+    else:
+        note_data += text[prev:]
+
+    try:
+        return note_data, buttons, alerts
+    except:
+        return note_data, buttons, None
+
 def parser(text, keyword):
     if "buttonalert" in text:
         text = (text.replace("\n", "\\n").replace("\t", "\\t"))
@@ -398,3 +432,55 @@ def humanbytes(size):
         size /= power
         n += 1
     return str(round(size, 2)) + " " + Dic_powerN[n] + 'B'
+
+async def get_shortlink(chat_id, link):
+    settings = await get_settings(chat_id) #fetching settings for group
+    if 'shortlink' in settings.keys():
+        URL = settings['shortlink']
+    else:
+        URL = SHORTLINK_URL
+    if 'shortlink_api' in settings.keys():
+        API = settings['shortlink_api']
+    else:
+        API = SHORTLINK_API
+    https = link.split(":")[0] #splitting https or http from link
+    if "http" == https: #if https == "http":
+        https = "https"
+        link = link.replace("http", https) #replacing http to https
+    if URL == "api.shareus.io":
+        url = f'https://{URL}/directLink'
+        params = {
+            "token": API,
+            "format": "json",
+            "link": link,
+        }
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, params=params, raise_for_status=True, ssl=False) as response:
+                    data = await response.json(content_type="text/html")
+                    if data["status"] == "success":
+                        return data["shortlink"]
+                    else:
+                        logger.error(f"Error: {data['message']}")
+                        return f'https://{URL}/directLink?token={API}&format=json&link={link}'
+        except Exception as e:
+            logger.error(e)
+            return f'https://{URL}/directLink?token={API}&format=json&link={link}'
+    else:
+        url = f'https://{URL}/api'
+        params = {
+            "api": API,
+            "url": link,
+        }
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, params=params, raise_for_status=True, ssl=False) as response:
+                    data = await response.json()
+                    if data["status"] == "success":
+                        return data["shortenedUrl"]
+                    else:
+                        logger.error(f"Error: {data['message']}")
+                        return f'https://{URL}/api?api={API}&link={link}'
+        except Exception as e:
+            logger.error(e)
+            return f'https://{URL}/api?api={API}&link={link}'
